@@ -71,6 +71,24 @@ interface DataErasureRequestParams {
   securityAnswer: string
 }
 
+function isSafeLayout (layout: string): boolean {
+  try {
+    const viewsPath = path.resolve('views')
+
+    const pathFromRoot = path.resolve(layout)
+    const relativeFromRoot = path.relative(viewsPath, pathFromRoot)
+    const isSafeFromRoot = relativeFromRoot && !relativeFromRoot.startsWith('..') && !path.isAbsolute(relativeFromRoot)
+
+    const pathFromViews = path.resolve(viewsPath, layout)
+    const relativeFromViews = path.relative(viewsPath, pathFromViews)
+    const isSafeFromViews = relativeFromViews && !relativeFromViews.startsWith('..') && !path.isAbsolute(relativeFromViews)
+
+    return isSafeFromRoot || isSafeFromViews
+  } catch {
+    return false
+  }
+}
+
 router.post('/', (req: Request<Record<string, unknown>, Record<string, unknown>, DataErasureRequestParams>, res: Response, next: NextFunction): void => {
   void (async () => {
     const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
@@ -103,13 +121,15 @@ router.post('/', (req: Request<Record<string, unknown>, Record<string, unknown>,
       if (req.body.layout) {
         const filePath: string = path.resolve(req.body.layout).toLowerCase()
         const isForbiddenFile: boolean = (filePath.includes('ftp') || filePath.includes('ctf.key') || filePath.includes('encryptionkeys'))
-        if (!isForbiddenFile) {
+        const isSafe: boolean = isSafeLayout(req.body.layout)
+
+        if (!isForbiddenFile && isSafe) {
           res.render('dataErasureResult', {
             ...req.body,
             ...themeVars
           }, (error, html) => {
             if (!html || error) {
-              next(new Error(error.message))
+              next(new Error(error ? error.message : 'Error rendering template'))
             } else {
               const sendlfrResponse: string = html.slice(0, 100) + '......'
               res.send(sendlfrResponse)
